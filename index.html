@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hoop Hustle - Multiple Modes</title>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      background: #0a2140;
+      color: white;
+      font-family: Arial, sans-serif;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    #homeScreen, #gameScreen {
+      width: 350px;
+      max-width: 100vw;
+      padding: 20px;
+      box-sizing: border-box;
+      user-select: none;
+    }
+    #homeScreen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 40px;
+    }
+    #homeScreen h1 {
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+    }
+    #homeScreen button.modeBtn {
+      margin: 10px 0;
+      padding: 14px 30px;
+      font-size: 1.3rem;
+      border-radius: 12px;
+      border: none;
+      background: #158aff;
+      color: white;
+      cursor: pointer;
+      width: 100%;
+      max-width: 300px;
+      transition: background 0.3s;
+      white-space: normal;
+      line-height: 1.2;
+    }
+    #homeScreen button.modeBtn:hover {
+      background: #1f6cd1;
+    }
+    #gameScreen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 10px;
+    }
+    #scoreBoard, #message, #timeLeft {
+      margin-top: 10px;
+      font-size: 1.4rem;
+      text-align: center;
+      min-height: 28px;
+    }
+    #gameArea {
+      position: relative;
+      width: 350px;
+      height: 480px;
+      background: #15305e;
+      border-radius: 20px;
+      box-shadow: 0 0 15px #0050ffaa;
+      overflow: visible;
+      user-select: none;
+      margin-top: 20px;
+    }
+    #hoop {
+      position: absolute;
+      top: 40px;
+      width: 120px;
+      height: 120px;
+      border: 8px solid #ddd;
+      border-radius: 50%;
+      box-sizing: border-box;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+      left: 50%;
+      transform: translateX(-50%);
+      transition: left 0.02s linear;
+    }
+    #hoopCenter {
+      width: 50px;
+      height: 50px;
+      background: #d33;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #ff4444cc;
+    }
+    #ball {
+      position: absolute;
+      font-size: 50px;
+      user-select: none;
+      pointer-events: none;
+      opacity: 1;
+      transition: none;
+      z-index: 10;
+      top: 420px;
+      left: 0;
+    }
+    #restartBtn, #playAgainBtn, #goHomeBtn {
+      margin: 12px auto 0 auto;
+      padding: 12px 24px;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 10px;
+      background: #ff7700;
+      color: white;
+      cursor: pointer;
+      display: none;
+      user-select: none;
+      width: 140px;
+    }
+    #goHomeBtn {
+      background: #158aff;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="homeScreen">
+  <h1>Hoop Hustle 🏀</h1>
+  <button class="modeBtn" data-mode="infinite">Infinite Mode<br><small>High Score: <span id="hsInfinite">0</span></small></button>
+  <button class="modeBtn" data-mode="timeTrial">Time Trial (30s)<br><small>High Score: <span id="hsTimeTrial">0</span></small></button>
+  <button class="modeBtn" data-mode="switch">Switch Mode (Moving Hoop + Ball)<br><small>High Score: <span id="hsSwitch">0</span></small></button>
+</div>
+
+<div id="gameScreen">
+  <div id="scoreBoard">Score: 0</div>
+  <div id="timeLeft"></div>
+  <div id="gameArea">
+    <div id="hoop">
+      <div id="hoopCenter"></div>
+    </div>
+    <div id="ball">🏀</div>
+  </div>
+  <div id="message"></div>
+  <button id="restartBtn">Restart</button>
+  <button id="playAgainBtn">Play Again</button>
+  <button id="goHomeBtn">Go Home</button>
+</div>
+
+<script>
+(() => {
+  const homeScreen = document.getElementById('homeScreen');
+  const gameScreen = document.getElementById('gameScreen');
+  const scoreBoard = document.getElementById('scoreBoard');
+  const timeLeftDisplay = document.getElementById('timeLeft');
+  const gameArea = document.getElementById('gameArea');
+  const hoop = document.getElementById('hoop');
+  const hoopCenter = document.getElementById('hoopCenter');
+  const ball = document.getElementById('ball');
+  const message = document.getElementById('message');
+  const restartBtn = document.getElementById('restartBtn');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+  const goHomeBtn = document.getElementById('goHomeBtn');
+
+  const hsInfiniteDisplay = document.getElementById('hsInfinite');
+  const hsTimeTrialDisplay = document.getElementById('hsTimeTrial');
+  const hsSwitchDisplay = document.getElementById('hsSwitch');
+
+  let mode = null;
+  let score = 0;
+  let gameActive = false;
+  let ballDirection = 1;
+  let ballPos = 0;
+  const ballSpeed = 6;
+  const ballWidth = 50;
+
+  let hoopDirection = 1;
+  const hoopSpeed = 4;
+  let hoopPos = 0;
+
+  let timeLeft = 0;
+  let timerInterval = null;
+
+  // High scores storage keys
+  const highScoreKeys = {
+    infinite: 'hoopHustleHighScoreInfinite',
+    timeTrial: 'hoopHustleHighScoreTimeTrial',
+    switch: 'hoopHustleHighScoreSwitch',
+  };
+
+  // Load high score for each mode and update Home Screen
+  function loadHighScores() {
+    hsInfiniteDisplay.textContent = localStorage.getItem(highScoreKeys.infinite) || '0';
+    hsTimeTrialDisplay.textContent = localStorage.getItem(highScoreKeys.timeTrial) || '0';
+    hsSwitchDisplay.textContent = localStorage.getItem(highScoreKeys.switch) || '0';
+  }
+
+  // Load high score for current mode
+  function getHighScore() {
+    if (!mode) return 0;
+    return parseInt(localStorage.getItem(highScoreKeys[mode])) || 0;
+  }
+
+  // Save high score for current mode
+  function saveHighScore(newScore) {
+    if (!mode) return;
+    const prev = getHighScore();
+    if (newScore > prev) {
+      localStorage.setItem(highScoreKeys[mode], newScore);
+      loadHighScores();
+    }
+  }
+
+  // Reset game values for new game
+  function resetGame() {
+    score = 0;
+    ballPos = 0;
+    ball.style.top = '420px';
+    ballDirection = 1;
+    hoopDirection = 1;
+
+    timeLeft = mode === 'timeTrial' ? 30 : mode === 'switch' ? 60 : 0;
+    updateTimeDisplay();
+
+    message.textContent = '';
+    restartBtn.style.display = 'none';
+    playAgainBtn.style.display = 'none';
+    goHomeBtn.style.display = 'none';
+    updateScoreDisplay();
+  }
+
+  // Update score display + high score
+  function updateScoreDisplay() {
+    const hs = getHighScore();
+    scoreBoard.textContent = `Score: ${score}  |  High Score: ${hs}`;
+  }
+
+  // Update timer display for timeTrial or switch mode
+  function updateTimeDisplay() {
+    if (mode === 'infinite') {
+      timeLeftDisplay.textContent = '';
+    } else {
+      timeLeftDisplay.textContent = `Time Left: ${timeLeft}s`;
+    }
+  }
+
+  // Ball sliding movement (in infinite & timeTrial & switch)
+  function moveBall() {
+    if (!gameActive) return;
+    ballPos += ballSpeed * ballDirection;
+    const maxPos = gameArea.clientWidth - ballWidth;
+    if (ballPos >= maxPos) {
+      ballPos = maxPos;
+      ballDirection = -1;
+    } else if (ballPos <= 0) {
+      ballPos = 0;
+      ballDirection = 1;
+    }
+    ball.style.left = ballPos + 'px';
+    if (mode === 'infinite' || mode === 'timeTrial' || mode === 'switch') {
+      requestAnimationFrame(moveBall);
+    }
+  }
+
+  // Hoop sliding movement (in switch mode)
+  function moveHoop() {
+    if (!gameActive || mode !== 'switch') return;
+    hoopPos += hoopSpeed * hoopDirection;
+    const maxPos = gameArea.clientWidth - hoop.clientWidth;
+    if (hoopPos >= maxPos) {
+      hoopPos = maxPos;
+      hoopDirection = -1;
+    } else if (hoopPos <= 0) {
+      hoopPos = 0;
+      hoopDirection = 1;
+    }
+    hoop.style.left = hoopPos + 'px';
+    hoop.style.transform = 'none';
+    requestAnimationFrame(moveHoop);
+  }
+
+  // Check if ball overlaps red hoop center (any part)
+  function isScore() {
+    const ballRect = ball.getBoundingClientRect();
+    const hoopRect = hoopCenter.getBoundingClientRect();
+
+    return !(ballRect.right < hoopRect.left ||
+             ballRect.left > hoopRect.right ||
+             ballRect.bottom < hoopRect.top ||
+             ballRect.top > hoopRect.bottom);
+  }
+
+  // Animate ball shooting straight up from current position
+  function shootBall(callback) {
+    const hoopRect = hoopCenter.getBoundingClientRect();
+    const areaRect = gameArea.getBoundingClientRect();
+    const targetTop = hoopRect.top - areaRect.top + hoopRect.height / 2 - ballWidth / 2;
+
+    ball.style.transition = 'top 0.6s ease-in-out';
+    ball.style.top = targetTop + 'px';
+
+    setTimeout(() => {
+      if (callback) callback();
+      ball.style.transition = 'none';
+      ball.style.top = '420px';
+    }, 650);
+  }
+
+  // Handle user tap/click to shoot
+  function onShoot() {
+    if (!gameActive) return;
+    gameActive = false;
+    message.textContent = '';
+    ball.style.transition = 'none';
+
+    setTimeout(() => {
+      shootBall(() => {
+        if (isScore()) {
+          score++;
+          updateScoreDisplay();
+          message.textContent = 'Nice shot! 🎉';
+          saveHighScore(score);
+
+          if (mode === 'infinite') {
+            // Keep playing infinite mode
+            setTimeout(() => {
+              gameActive = true;
+              ball.style.top = '420px';
+              requestAnimationFrame(moveBall);
+            }, 1000);
+          } else {
+            // TimeTrial and Switch modes continue until timer ends
+            gameActive = true;
+            ball.style.top = '420px';
+            if (mode === 'timeTrial' || mode === 'switch') {
+              requestAnimationFrame(moveBall);
+              if (mode === 'switch') requestAnimationFrame(moveHoop);
+            }
+          }
+
+        } else {
+          // Missed shot
+          message.textContent = 'Missed!';
+          if (mode === 'infinite') {
+            // Game over infinite mode
+            playAgainBtn.style.display = 'inline-block';
+            goHomeBtn.style.display = 'inline-block';
+            timeLeftDisplay.textContent = '';
+          } else {
+            // TimeTrial and Switch modes - no penalty, continue playing
+            setTimeout(() => {
+              gameActive = true;
+              ball.style.top = '420px';
+              if (mode === 'timeTrial' || mode === 'switch') {
+                requestAnimationFrame(moveBall);
+                if (mode === 'switch') requestAnimationFrame(moveHoop);
+              }
+            }, 1000);
+          }
+        }
+      });
+    }, 500);
+  }
+
+  // Timer for timeTrial and switch modes
+  function startTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      timeLeft--;
+      updateTimeDisplay();
+
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        gameActive = false;
+        message.textContent = `Time's up! Final Score: ${score}`;
+        playAgainBtn.style.display = 'inline-block';
+        goHomeBtn.style.display = 'inline-block';
+        saveHighScore(score);
+      }
+    }, 1000);
+  }
+
+  // Start the game for selected mode
+  function startGame(selectedMode) {
+    mode = selectedMode;
+    homeScreen.style.display = 'none';
+    gameScreen.style.display = 'flex';
+
+    resetGame();
+
+    if (mode === 'infinite' || mode === 'timeTrial') {
+      ball.style.top = '420px';
+      hoop.style.left = '50%';
+      hoop.style.transform = 'translateX(-50%)';
+      gameActive = true;
+      requestAnimationFrame(moveBall);
+      if (mode === 'timeTrial') {
+        startTimer();
+      }
+    } else if (mode === 'switch') {
+      // Ball slides horizontally, hoop slides horizontally too
+      hoopPos = 0;
+      hoop.style.left = hoopPos + 'px';
+      hoop.style.transform = 'none';
+      ballPos = 0;
+      ball.style.top = '420px';
+      gameActive = true;
+      requestAnimationFrame(moveBall);
+      requestAnimationFrame(moveHoop);
+      startTimer();
+    }
+
+    message.textContent = '';
+    restartBtn.style.display = 'none';
+    playAgainBtn.style.display = 'none';
+    goHomeBtn.style.display = 'none';
+    updateScoreDisplay();
+  }
+
+  // Play Again button handler
+  playAgainBtn.addEventListener('click', () => {
+    resetGame();
+    message.textContent = '';
+    playAgainBtn.style.display = 'none';
+    goHomeBtn.style.display = 'none';
+
+    if (mode === 'infinite' || mode === 'timeTrial') {
+      gameActive = true;
+      requestAnimationFrame(moveBall);
+      if (mode === 'timeTrial') startTimer();
+    } else if (mode === 'switch') {
+      gameActive = true;
+      requestAnimationFrame(moveBall);
+      requestAnimationFrame(moveHoop);
+      startTimer();
+    }
+  });
+
+  // Go Home button handler
+  goHomeBtn.addEventListener('click', () => {
+    gameScreen.style.display = 'none';
+    homeScreen.style.display = 'flex';
+  });
+
+  // Home screen mode buttons
+  homeScreen.querySelectorAll('button.modeBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const selectedMode = btn.getAttribute('data-mode');
+      startGame(selectedMode);
+    });
+  });
+
+  // Game area click to shoot
+  gameArea.addEventListener('click', () => {
+    onShoot();
+  });
+
+  loadHighScores();
+})();
+</script>
+
+</body>
+</html>
