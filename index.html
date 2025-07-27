@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hoop Hustle 🏀 Swipe Shoot</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #0a2140;
+    color: #fff;
+    margin: 0; padding: 0;
+    display: flex; flex-direction: column; align-items: center;
+    user-select: none;
+    overflow: hidden;
+  }
+  #homeScreen, #gameScreen {
+    width: 100vw; max-width: 400px; min-height: 600px;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center;
+  }
+  #homeScreen button {
+    font-size: 1.3rem;
+    margin: 12px 0;
+    padding: 14px 30px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    background: #158aff;
+    color: white;
+    transition: background 0.3s;
+  }
+  #homeScreen button:hover {
+    background: #1f6cd1;
+  }
+  #scoreBoard {
+    font-size: 2rem;
+    margin: 15px 0 5px 0;
+  }
+  #highScore {
+    font-size: 1rem;
+    margin-bottom: 10px;
+    color: #a0c4ff;
+  }
+  #timeLeft {
+    font-size: 1.2rem;
+    margin-bottom: 20px;
+  }
+  #gameArea {
+    position: relative;
+    width: 350px;
+    height: 450px;
+    background: #15305e;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 0 10px #0050ffaa;
+    touch-action: none;
+  }
+  #hoop {
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%) scale(2.3);
+    font-size: 64px;
+    user-select: none;
+    pointer-events: none;
+  }
+  #ball {
+    position: absolute;
+    font-size: 50px;
+    user-select: none;
+    touch-action: none;
+    cursor: grab;
+    left: 150px;
+    top: 350px;
+  }
+  #message {
+    margin-top: 15px;
+    font-size: 1.3rem;
+    color: #ffbb00;
+    height: 28px;
+    min-height: 28px;
+  }
+  #restartBtn {
+    margin-top: 20px;
+    font-size: 1.1rem;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    background: #ff7700;
+    color: white;
+    cursor: pointer;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="homeScreen">
+  <h1>Hoop Hustle 🏀</h1>
+  <p>Select Game Mode</p>
+  <button data-mode="classic">Classic (60 sec)</button>
+  <button data-mode="streak">Streak (No miss)</button>
+  <button data-mode="moving">Moving Hoop</button>
+</div>
+
+<div id="gameScreen" style="display:none; flex-direction: column; align-items: center;">
+  <div id="scoreBoard">Score: 0</div>
+  <div id="highScore">High Score: 0</div>
+  <div id="timeLeft"></div>
+  <div id="gameArea">
+    <div id="hoop">⭕️</div>
+    <div id="ball">🏀</div>
+  </div>
+  <div id="message"></div>
+  <button id="restartBtn">Restart</button>
+</div>
+
+<script>
+(() => {
+  const homeScreen = document.getElementById('homeScreen');
+  const gameScreen = document.getElementById('gameScreen');
+  const scoreBoard = document.getElementById('scoreBoard');
+  const highScoreDisplay = document.getElementById('highScore');
+  const timeLeftDisplay = document.getElementById('timeLeft');
+  const gameArea = document.getElementById('gameArea');
+  const hoop = document.getElementById('hoop');
+  const ball = document.getElementById('ball');
+  const message = document.getElementById('message');
+  const restartBtn = document.getElementById('restartBtn');
+
+  let score = 0;
+  let highScores = {};
+  let mode = '';
+  let timeLeft = 60;
+  let timerInterval = null;
+  let gameActive = false;
+  let streakMode = false;
+  let movingHoop = false;
+  let hoopX = 0;
+  let hoopDir = 1;
+
+  let dragging = false;
+  let dragStartY = 0;
+  let dragStartX = 0;
+  let ballStartX = 0;
+  let ballStartY = 0;
+
+  function loadHighScores() {
+    const saved = localStorage.getItem('hoopHustleHighScores');
+    highScores = saved ? JSON.parse(saved) : {};
+  }
+  function saveHighScores() {
+    localStorage.setItem('hoopHustleHighScores', JSON.stringify(highScores));
+  }
+  function getHighScoreForMode(m) {
+    return highScores[m] || 0;
+  }
+  function setHighScoreForMode(m, val) {
+    if (!highScores[m] || val > highScores[m]) {
+      highScores[m] = val;
+      saveHighScores();
+    }
+  }
+
+  function updateScore() {
+    scoreBoard.textContent = `Score: ${score}`;
+    highScoreDisplay.textContent = `High Score: ${getHighScoreForMode(mode)}`;
+  }
+  function updateTime() {
+    if (mode === 'streak') {
+      timeLeftDisplay.textContent = '';
+    } else {
+      timeLeftDisplay.textContent = `Time Left: ${timeLeft}s`;
+    }
+  }
+
+  function resetBall() {
+    ball.style.transition = 'none';
+    ball.style.left = '150px';
+    ball.style.top = '350px';
+    ball.style.opacity = '1';
+    ball.style.cursor = 'grab';
+  }
+
+  function animateScore(callback) {
+    const hoopRect = hoop.getBoundingClientRect();
+    const areaRect = gameArea.getBoundingClientRect();
+    const targetX = hoopRect.left - areaRect.left + hoopRect.width / 2 - 25;
+    const targetY = hoopRect.top - areaRect.top + hoopRect.height / 2 - 25;
+
+    ball.style.transition = 'all 0.5s ease-in-out';
+    ball.style.left = targetX + 'px';
+    ball.style.top = targetY + 'px';
+    ball.style.opacity = '0';
+
+    setTimeout(() => {
+      resetBall();
+      if (callback) callback();
+    }, 600);
+  }
+
+  function moveHoop() {
+    if (!movingHoop) return;
+    hoopX += hoopDir * 3;
+    if (hoopX > gameArea.clientWidth - 60) hoopDir = -1;
+    if (hoopX < 0) hoopDir = 1;
+    hoop.style.left = hoopX + 'px';
+    hoop.style.transform = 'translateX(0) scale(2.3)';
+  }
+
+  function gameLoop() {
+    if (!gameActive) return;
+    if (movingHoop) moveHoop();
+    requestAnimationFrame(gameLoop);
+  }
+
+  function startGame(selectedMode) {
+    mode = selectedMode;
+    score = 0;
+    timeLeft = 60;
+    streakMode = mode === 'streak';
+    movingHoop = mode === 'moving';
+    hoopX = gameArea.clientWidth / 2 - 30;
+    hoop.style.left = '50%';
+    hoop.style.transform = 'translateX(-50%) scale(2.3)';
+    gameActive = true;
+    message.textContent = '';
+    restartBtn.style.display = 'none';
+
+    updateScore();
+    updateTime();
+    resetBall();
+
+    if (!streakMode) {
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        updateTime();
+        if (timeLeft <= 0) {
+          endGame();
+        }
+      }, 1000);
+    }
+
+    homeScreen.style.display = 'none';
+    gameScreen.style.display = 'flex';
+
+    gameLoop();
+  }
+
+  function endGame() {
+    gameActive = false;
+    clearInterval(timerInterval);
+    setHighScoreForMode(mode, score);
+    updateScore();
+    message.textContent = `Game Over! Final Score: ${score}`;
+    restartBtn.style.display = 'inline-block';
+  }
+
+  function checkScore() {
+    const ballRect = ball.getBoundingClientRect();
+    const hoopRect = hoop.getBoundingClientRect();
+
+    const ballCenterX = ballRect.left + ballRect.width / 2;
+    const ballCenterY = ballRect.top + ballRect.height / 2;
+    const hoopCenterX = hoopRect.left + hoopRect.width / 2;
+    const hoopCenterY = hoopRect.top + hoopRect.height / 2;
+
+    const distX = Math.abs(ballCenterX - hoopCenterX);
+    const distY = Math.abs(ballCenterY - hoopCenterY);
+
+    const scoringZoneX = 60;
+    const scoringZoneY = 70;
+
+    return (distX < scoringZoneX && distY < scoringZoneY);
+  }
+
+  function dragStart(e) {
+    if (!gameActive) return;
+    e.preventDefault();
+    dragging = true;
+    const touch = e.touches ? e.touches[0] : e;
+    dragStartY = touch.clientY;
+    dragStartX = touch.clientX;
+    ballStartX = parseInt(ball.style.left, 10);
+    ballStartY = parseInt(ball.style.top, 10);
+    ball.style.transition = 'none';
+    ball.style.cursor = 'grabbing';
+  }
+
+  function dragMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    const touch = e.touches ? e.touches[0] : e;
+    let deltaX = touch.clientX - dragStartX;
+    let deltaY = touch.clientY - dragStartY;
+    if (deltaY > 0) deltaY = 0;
+    let newX = ballStartX + deltaX;
+    let newY = ballStartY + deltaY;
+    newX = Math.min(Math.max(newX, 0), gameArea.clientWidth - 50);
+    newY = Math.min(Math.max(newY, 0), gameArea.clientHeight - 50);
+    ball.style.left = newX + 'px';
+    ball.style.top = newY + 'px';
+  }
+
+  function dragEnd(e) {
+    if (!dragging) return;
+    dragging = false;
+    ball.style.cursor = 'grab';
+    const touch = e.changedTouches ? e.changedTouches[0] : e;
+    let deltaY = dragStartY - touch.clientY;
+    if (deltaY < 20) {
+      resetBall();
+      return;
+    }
+    const hoopRect = hoop.getBoundingClientRect();
+    const areaRect = gameArea.getBoundingClientRect();
+    const targetX = hoopRect.left - areaRect.left + hoopRect.width / 2 - 25;
+    const targetY = hoopRect.top - areaRect.top + hoopRect.height / 2 - 25;
+    ball.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+    ball.style.left = targetX + 'px';
+    ball.style.top = targetY + 'px';
+    setTimeout(() => {
+      if (checkScore()) {
+        score++;
+        animateScore(() => {
+          updateScore();
+        });
+        message.textContent = '';
+      } else {
+        if (streakMode) {
+          endGame();
+        } else {
+          message.textContent = 'Missed! Try again...';
+          resetBall();
+          setTimeout(() => { message.textContent = ''; }, 1200);
+        }
+      }
+    }, 400);
+  }
+
+  restartBtn.addEventListener('click', () => {
+    startGame(mode);
+  });
+
+  homeScreen.querySelectorAll('button[data-mode]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      startGame(e.target.getAttribute('data-mode'));
+    });
+  });
+
+  ball.addEventListener('mousedown', dragStart);
+  ball.addEventListener('touchstart', dragStart);
+
+  window.addEventListener('mousemove', dragMove);
+  window.addEventListener('touchmove', dragMove);
+
+  window.addEventListener('mouseup', dragEnd);
+  window.addEventListener('touchend', dragEnd);
+
+  loadHighScores();
+})();
+</script>
+
+</body>
+</html>
