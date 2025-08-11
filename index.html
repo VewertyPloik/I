@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Neon Tetris 2D</title>
+<style>
+  body {
+    margin: 0; 
+    background: #000;
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    height: 100vh;
+    color: #0ff; 
+    font-family: 'Courier New', Courier, monospace;
+    user-select: none;
+  }
+  canvas {
+    background: #111;
+    border: 4px solid #0ff;
+    box-shadow:
+      0 0 20px #0ff,
+      0 0 40px #0ff,
+      0 0 60px #0ff,
+      0 0 80px #0ff;
+  }
+  #score {
+    position: fixed;
+    top: 10px;
+    right: 20px;
+    font-size: 22px;
+    color: #0ff;
+    text-shadow: 0 0 5px #0ff;
+  }
+  #controls {
+    position: fixed;
+    bottom: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+  }
+  button {
+    background: #0ff;
+    border: none;
+    border-radius: 8px;
+    color: #000;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 10px 16px;
+    box-shadow: 0 0 10px #0ff;
+    user-select: none;
+  }
+  button:active {
+    background: #0cc;
+    box-shadow: 0 0 20px #0cc;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="tetris" width="240" height="400"></canvas>
+<div id="score">Score: 0</div>
+
+<div id="controls">
+  <button id="left">◀️</button>
+  <button id="rotate">🔄</button>
+  <button id="right">▶️</button>
+  <button id="down">⬇️</button>
+</div>
+
+<script>
+const canvas = document.getElementById('tetris');
+const context = canvas.getContext('2d');
+
+const ROWS = 20;
+const COLS = 10;
+const BLOCK_SIZE = 20;
+
+context.scale(BLOCK_SIZE, BLOCK_SIZE);
+
+const colors = [
+  null,
+  '#0ff',    // Cyan - I
+  '#f0f',    // Magenta - T
+  '#ff0',    // Yellow - O
+  '#0f0',    // Green - S
+  '#f00',    // Red - Z
+  '#00f',    // Blue - J
+  '#ffa500', // Orange - L
+];
+
+const pieces = {
+  I: [
+    [
+      [0,0,0,0],
+      [1,1,1,1],
+      [0,0,0,0],
+      [0,0,0,0],
+    ],
+    [
+      [0,0,1,0],
+      [0,0,1,0],
+      [0,0,1,0],
+      [0,0,1,0],
+    ]
+  ],
+  T: [
+    [
+      [0,0,0],
+      [2,2,2],
+      [0,2,0],
+    ],
+    [
+      [0,2,0],
+      [2,2,0],
+      [0,2,0],
+    ],
+    [
+      [0,2,0],
+      [2,2,2],
+      [0,0,0],
+    ],
+    [
+      [0,2,0],
+      [0,2,2],
+      [0,2,0],
+    ]
+  ],
+  O: [
+    [
+      [3,3],
+      [3,3],
+    ]
+  ],
+  S: [
+    [
+      [0,4,4],
+      [4,4,0],
+      [0,0,0],
+    ],
+    [
+      [0,4,0],
+      [0,4,4],
+      [0,0,4],
+    ]
+  ],
+  Z: [
+    [
+      [5,5,0],
+      [0,5,5],
+      [0,0,0],
+    ],
+    [
+      [0,0,5],
+      [0,5,5],
+      [0,5,0],
+    ]
+  ],
+  J: [
+    [
+      [6,0,0],
+      [6,6,6],
+      [0,0,0],
+    ],
+    [
+      [0,6,6],
+      [0,6,0],
+      [0,6,0],
+    ],
+    [
+      [0,0,0],
+      [6,6,6],
+      [0,0,6],
+    ],
+    [
+      [0,6,0],
+      [0,6,0],
+      [6,6,0],
+    ]
+  ],
+  L: [
+    [
+      [0,0,7],
+      [7,7,7],
+      [0,0,0],
+    ],
+    [
+      [0,7,0],
+      [0,7,0],
+      [0,7,7],
+    ],
+    [
+      [0,0,0],
+      [7,7,7],
+      [7,0,0],
+    ],
+    [
+      [7,7,0],
+      [0,7,0],
+      [0,7,0],
+    ]
+  ]
+};
+
+function createMatrix(w, h) {
+  const matrix = [];
+  while (h--) {
+    matrix.push(new Array(w).fill(0));
+  }
+  return matrix;
+}
+
+function collide(arena, piece) {
+  const [m, o] = [piece.matrix, piece.pos];
+  for(let y=0; y < m.length; y++) {
+    for(let x=0; x < m[y].length; x++) {
+      if(m[y][x] !== 0 &&
+         (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function merge(arena, piece) {
+  piece.matrix.forEach((row, y) => {
+    row.forEach((value, x) => {
+      if(value !== 0) {
+        arena[y + piece.pos.y][x + piece.pos.x] = value;
+      }
+    });
+  });
+}
+
+function rotate(matrix, dir) {
+  for(let y=0; y < matrix.length; y++) {
+    for(let x=0; x < y; x++) {
+      [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+    }
+  }
+  if(dir > 0) {
+    matrix.forEach(row => row.reverse());
+  } else {
+    matrix.reverse();
+  }
+}
+
+function drawMatrix(matrix, offset) {
+  matrix.forEach((row,y) => {
+    row.forEach((value,x) => {
+      if(value !== 0) {
+        context.fillStyle = colors[value];
+        context.shadowColor = colors[value];
+        context.shadowBlur = 15;
+        context.fillRect(x + offset.x, y + offset.y, 1, 1);
+        context.shadowBlur = 0;
+        context.strokeStyle = '#000';
+        context.lineWidth = 0.05;
+        context.strokeRect(x + offset.x, y + offset.y, 1, 1);
+      }
+    });
+  });
+}
+
+function clearLines() {
+  outer: for(let y = arena.length - 1; y >= 0; y--) {
+    for(let x = 0; x < arena[y].length; x++) {
+      if(arena[y][x] === 0) {
+        continue outer;
+      }
+    }
+    // Remove line and add empty on top
+    arena.splice(y, 1);
+    arena.unshift(new Array(COLS).fill(0));
+    score += 10;
+    y++;
+  }
+}
+
+function resetPiece() {
+  const piecesKeys = Object.keys(pieces);
+  const type = piecesKeys[Math.floor(Math.random() * piecesKeys.length)];
+  current.matrix = pieces[type][0].map(row => row.slice()); // clone
+  current.pos.x = Math.floor(COLS/2) - Math.floor(current.matrix[0].length/2);
+  current.pos.y = 0;
+  current.type = type;
+  current.rotationIndex = 0;
+
+  if(collide(arena, current)) {
+    arena.forEach(row => row.fill(0));
+    score = 0;
+    updateScore();
+  }
+}
+
+function playerDrop() {
+  current.pos.y++;
+  if(collide(arena, current)) {
+    current.pos.y--;
+    merge(arena, current);
+    clearLines();
+    updateScore();
+    resetPiece();
+  }
+  dropCounter = 0;
+}
+
+function playerMove(dir) {
+  current.pos.x += dir;
+  if(collide(arena, current)) {
+    current.pos.x -= dir;
+  }
+}
+
+function playerRotate(dir) {
+  let originalRotation = current.rotationIndex;
+  let nextRotationIndex = (originalRotation + dir + pieces[current.type].length) % pieces[current.type].length;
+  current.matrix = pieces[current.type][nextRotationIndex].map(row => row.slice());
+  current.rotationIndex = nextRotationIndex;
+
+  if(collide(arena, current)) {
+    // Wall kick: try shifting left or right to fix
+    if(!tryWallKick(dir)) {
+      // revert rotation
+      current.matrix = pieces[current.type][originalRotation].map(row => row.slice());
+      current.rotationIndex = originalRotation;
+    }
+  }
+}
+
+function tryWallKick(dir) {
+  const posX = current.pos.x;
+  const kicks = [1, -1, 2, -2];
+  for(let i = 0; i < kicks.length; i++) {
+    current.pos.x = posX + kicks[i];
+    if(!collide(arena, current)) return true;
+  }
+  current.pos.x = posX;
+  return false;
+}
+
+function updateScore() {
+  document.getElementById('score').textContent = 'Score: ' + score;
+}
+
+function draw() {
+  context.fillStyle = '#111';
+  context.fillRect(0, 0, COLS, ROWS);
+
+  drawMatrix(arena, {x: 0, y: 0});
+  drawMatrix(current.matrix, current.pos);
+}
+
+let dropCounter = 0;
+let dropInterval = 700;
+
+let lastTime = 0;
+let score = 0;
+
+const arena = createMatrix(COLS, ROWS);
+
+const current = {
+  pos: {x: 0, y: 0},
+  matrix: null,
+  type: null,
+  rotationIndex: 0,
+};
+
+resetPiece();
+
+function update(time = 0) {
+  const deltaTime = time - lastTime;
+  lastTime = time;
+
+  dropCounter += deltaTime;
+  if(dropCounter > dropInterval) {
+    playerDrop();
+  }
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+document.addEventListener('keydown', event => {
+  if(event.key === 'ArrowLeft' || event.key === 'a') {
+    playerMove(-1);
+  } else if(event.key === 'ArrowRight' || event.key === 'd') {
+    playerMove(1);
+  } else if(event.key === 'ArrowDown' || event.key === 's') {
+    playerDrop();
+  } else if(event.key === 'ArrowUp' || event.key === 'w' || event.key === ' ') {
+    playerRotate(1);
+  }
+});
+
+document.getElementById('left').addEventListener('click', () => playerMove(-1));
+document.getElementById('right').addEventListener('click', () => playerMove(1));
+document.getElementById('down').addEventListener('click', () => playerDrop());
+document.getElementById('rotate').addEventListener('click', () => playerRotate(1));
+
+updateScore();
+update();
+
+</script>
+</body>
+</html>
